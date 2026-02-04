@@ -1,0 +1,68 @@
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class ChatServer {
+    private static final int PORT = 12345;
+    private static final List<ClientHandler> clients = Collections.synchronizedList(new ArrayList<>());
+
+    public static void main(String[] args) {
+        System.out.println("Server started. Waiting for clients...");
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            while (true) {
+                Socket socket = serverSocket.accept();
+                System.out.println("Client connected: " + socket.getInetAddress());
+                ClientHandler handler = new ClientHandler(socket);
+                clients.add(handler);
+                new Thread(handler).start();
+            }
+        } catch (IOException e) {
+            System.err.println("Server error: " + e.getMessage());
+        }
+    }
+
+    static class ClientHandler implements Runnable {
+        private Socket socket;
+        private BufferedReader in;
+        private PrintWriter out;
+
+        public ClientHandler(Socket socket) {
+            this.socket = socket;
+            try {
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+            } catch (IOException e) {
+                System.err.println("Error setting up streams: " + e.getMessage());
+            }
+        }
+
+        public void run() {
+            try {
+                String message;
+                while ((message = in.readLine()) != null) {
+                    System.out.println("Received: " + message);
+                    broadcast(message);
+                }
+            } catch (IOException e) {
+                System.out.println("Client disconnected: " + socket.getInetAddress());
+            } finally {
+                try {
+                    socket.close();
+                    clients.remove(this);
+                } catch (IOException e) {
+                    System.err.println("Error closing socket: " + e.getMessage());
+                }
+            }
+        }
+
+        private void broadcast(String message) {
+            synchronized (clients) {
+                for (ClientHandler client : clients) {
+                    if (client != this) {
+                        client.out.println(message);
+                    }
+                }
+            }
+        }
+    }
+}
